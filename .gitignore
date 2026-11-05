@@ -6,7 +6,3 @@ Backup/
 CrashAutoSave*
 *.bak
 *.toe.bak
-
-# Heavy media (recordings exceed GitHub limits)
-ASSETS/Recording/
-*.mov
