@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# TouchDesigner backups and crash saves
+Backup/
+CrashAutoSave*
+*.bak
+*.toe.bak
+
+# Heavy media (recordings exceed GitHub limits)
+ASSETS/Recording/
+*.mov

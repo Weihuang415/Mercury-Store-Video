@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mercury Live Feed</title>
+<!--
+  Rendered by /project1/UI/webrender at exactly 1600x900.
+  #program and #cams are holes: TouchDesigner draws the live video on top of them.
+  Keep their positions in sync with PROGRAM / CAMS in build_ui.py.
+  After editing: UI > Reload Page.
+-->
+<style>
+  :root {
+    --bg: #000;
+    --fg: #fff;
+    --dim: #a8a8a8;
+    --line: #3a3a3a;
+    --btn: #141414;
+    --btn-hover: #3a3a3a;
+    --btn-line-hover: #ffffff;
+    --field: #1c1c1c;
+    --fill: #4d4d4d;
+    --rec: #ff453a;
+    --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; width: 1600px; height: 900px; overflow: hidden; }
+  body {
+    position: relative; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 var(--font); font-variant-numeric: tabular-nums;
+    user-select: none; -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .abs { position: absolute; }
+  .label { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+
+  /* one button style for everything clickable */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 32px; padding: 0 12px; border-radius: 3px;
+    background: var(--btn); border: 1px solid var(--line); color: var(--fg);
+    transition: background .1s, border-color .1s;
+  }
+.btn:hover, .btn.hover { background: var(--btn-hover); border-color: var(--btn-line-hover); }
+  .btn:active { background: #555; transform: translateY(1px); }
+.btn.on, .btn.on:hover, .btn.on.hover { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+  .btn:disabled { opacity: .35; cursor: default; }
+
+  /* ---------- header */
+  header { left: 16px; top: 14px; width: 1568px; height: 40px; display: flex; align-items: center; gap: 24px; }
+  .title { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
+  .conn { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rec); }
+  .conn.on .dot { background: #3ddc84; }
+  header .spacer { flex: 1; }
+  .rec-pill { display: none; padding: 4px 10px; border-radius: 3px; background: var(--rec); color: #fff; font-size: 12px; font-weight: 600; letter-spacing: .14em; }
+  body.is-rec .rec-pill { display: block; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .4; } }
+
+  /* ---------- cue list (left) */
+  #cueHead { left: 16px; top: 80px; width: 280px; }
+  #scenes { left: 16px; top: 108px; width: 280px; height: 688px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  #scenes::-webkit-scrollbar { width: 0; }
+  .scene {
+    flex: none; display: flex; align-items: center; justify-content: space-between;
+    height: 46px; padding: 0 14px; border-radius: 3px;
+    background: var(--btn); border: 1px solid var(--line); color: var(--fg);
+    font-size: 15px; letter-spacing: .02em; text-align: left; white-space: nowrap;
+    transition: background .1s, border-color .1s;
+  }
+  .scene .left { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+  .scene .num { width: 20px; flex: none; text-align: right; font-size: 13px; color: var(--dim); }
+  .scene.active .num { color: var(--bg); }
+  .scene .name { overflow: hidden; text-overflow: ellipsis; }
+  .scene .tag { font-size: 10px; letter-spacing: .16em; color: var(--dim); }
+.scene:hover, .scene.hover { background: var(--btn-hover); border-color: var(--btn-line-hover); }
+  .scene:active { transform: translateY(1px); }
+  .scene.next { border-color: var(--btn-line-hover); }
+  .scene.next .tag { color: var(--fg); }
+  .scene.next .tag::after { content: "NEXT"; }
+.scene.active, .scene.active:hover, .scene.active.hover { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+  .scene.active .tag { color: var(--bg); }
+  .scene.active .tag::after { content: "LIVE"; }
+  #go {
+    left: 16px; top: 812px; width: 280px; height: 72px; border: 1px solid var(--fg); border-radius: 3px; background: var(--btn);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 18px;
+    transition: background .1s, color .1s;
+  }
+  #go .go { font-size: 20px; font-weight: 600; letter-spacing: .24em; }
+  #go .to { font-size: 12px; color: var(--dim); }
+#go:hover, #go.hover { background: var(--btn-hover); }
+  #go:active { background: var(--fg); color: var(--bg); }
+  #go:active .to { color: var(--bg); }
+  #go:disabled { border-color: var(--line); opacity: .4; cursor: default; background: none; }
+
+  /* ---------- video holes (same as PROGRAM / CAMS in build_ui.py) */
+  .row-head { display: flex; justify-content: space-between; align-items: baseline; }
+  /* section titles: bold, normal case, no tracking */
+  .row-head > span:first-child, #clipCount, .section-head .big {
+    font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--fg);
+  }
+  .row-head .info { color: var(--fg); letter-spacing: .08em; }
+  .warn { color: var(--rec); }
+  #outHead { left: 328px; top: 80px; width: 800px; }
+  #program { left: 328px; top: 112px; width: 800px; height: 450px; background: #111; }
+  #programFrame { left: 326px; top: 110px; width: 804px; height: 454px; border: 2px solid transparent; }
+  body.is-rec #programFrame { border-color: var(--rec); }
+  #camHead { left: 328px; top: 602px; width: 800px; }
+  #cams { left: 328px; top: 634px; width: 800px; height: 200px; }
+  .cam-hole { position: absolute; top: 0; height: 144px; background: #111; }
+  .cam-cap { position: absolute; top: 152px; line-height: 1.35; }
+  .cam-cap .dev { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cam-cap .spec { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- right column */
+  #right { left: 1160px; top: 80px; width: 424px; height: 804px; display: flex; flex-direction: column; gap: 20px; }
+  .section { display: flex; flex-direction: column; min-height: 0; }
+  .section.grow { flex: 1; }
+  .section-head {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    height: 28px; margin-bottom: 10px; flex: none;
+  }
+  .section-head .big { font-size: 15px; letter-spacing: .02em; color: var(--fg); text-transform: none; }
+  .scroll { overflow: auto; min-height: 0; }
+  .scroll::-webkit-scrollbar { width: 0; }
+
+  /* transport */
+  .transport { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .transport .btn { height: 56px; font-size: 14px; font-weight: 600; letter-spacing: .1em; }
+  .transport .icon { font-size: 15px; }
+  .btn.rec { color: var(--rec); border-color: #6b2420; }
+.btn.rec:hover, .btn.rec.hover { border-color: var(--rec); }
+  body.is-rec .btn.rec { background: var(--rec); border-color: var(--rec); color: #fff; }
+  .status-line { display: flex; justify-content: space-between; margin-top: 10px; font-size: 13px; }
+
+  /* parameter rows, drawn like a TouchDesigner parameter dialog */
+  .pars { display: flex; flex-direction: column; gap: 3px; }
+  .ctl { display: grid; grid-template-columns: 124px 1fr; align-items: center; gap: 8px; min-height: 22px; font-size: 12px; }
+  .ctl > .plabel { color: #cfcfcf; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ctl.disabled { opacity: .4; pointer-events: none; }
+  .page-name { margin: 10px 0 2px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+
+  .tdf {  /* the grey value box TD uses for numbers, menus and strings */
+    height: 20px; padding: 0 6px; display: flex; align-items: center;
+    background: #474747; color: #ececec; border: 1px solid transparent; font-size: 12px; white-space: nowrap; overflow: hidden;
+  }
+  .numrow { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; }
+  .nf { cursor: text; }
+  .nf:hover, .nf.hover { background: #555; }
+  .nf.editing { background: #1e1e1e; border-color: #8a8a8a; }
+  .nf.editing::after { content: ""; width: 1px; height: 13px; margin-left: 1px; background: var(--fg); animation: caret 1s steps(2) infinite; }
+  .nf.editing.fresh span { background: #5b7fa6; }
+  @keyframes caret { 50% { opacity: 0; } }
+
+  /* slider: thin track + small handle, drag anywhere on it */
+  .tds { position: relative; height: 20px; cursor: ew-resize; }
+  .tds::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: #4a4a4a; }
+  .tds .fill { position: absolute; left: 0; top: 50%; height: 2px; margin-top: -1px; background: #8c8c8c; }
+  .tds .handle { position: absolute; top: 3px; width: 7px; height: 14px; margin-left: -3px; background: #9a9a9a; }
+  .tds:hover .handle, .tds.hover .handle, .tds.drag .handle { background: #e0e0e0; }
+
+  /* pulse: small "Pulse" button */
+  .tdpulse {
+    justify-self: start; height: 20px; min-width: 52px; padding: 0 10px;
+    background: #4f4f4f; border: 1px solid #5d5d5d; color: #e6e6e6; font-size: 12px;
+  }
+  .tdpulse:hover, .tdpulse.hover { background: #626262; border-color: #8a8a8a; }
+  .tdpulse:active { background: #8a8a8a; color: #000; }
+
+  /* toggle: dark box, lights up when On */
+  .tdtog {
+    justify-self: start; height: 20px; min-width: 44px; padding: 0 10px;
+    background: #2c2c2c; border: 1px solid #4a4a4a; color: #9a9a9a; font-size: 12px;
+  }
+  .tdtog:hover, .tdtog.hover { border-color: #8a8a8a; }
+  .tdtog.on { background: #6c6c6c; border-color: #7c7c7c; color: #fff; }
+
+  /* menu: value box with an arrow, opens a list */
+  .tdmenu { justify-content: space-between; cursor: pointer; }
+  .tdmenu::after { content: "\25BE"; color: #bdbdbd; margin-left: 8px; }
+  .tdmenu:hover, .tdmenu.hover { background: #555; }
+  .tdlist {
+    position: fixed; z-index: 20; background: #2e2e2e; border: 1px solid #6a6a6a; box-shadow: 0 6px 18px rgba(0,0,0,.6);
+    font-size: 12px; padding: 2px 0;
+  }
+  .tdopt { height: 22px; padding: 0 10px; display: flex; align-items: center; color: #e6e6e6; cursor: pointer; }
+  .tdopt:hover, .tdopt.hover { background: #5b7fa6; color: #fff; }
+  .tdopt.sel { font-weight: 600; }
+
+  /* string: light field with dark text, like TD's Status field */
+  .tdstr { background: #b4b4b4; color: #111; }
+
+  /* clips table */
+  .clips-tools { display: flex; gap: 6px; align-items: center; }
+  .clips-tools .btn { height: 26px; width: 30px; padding: 0; font-size: 11px; }
+  .clips-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 3px; }
+  .clips-wrap::-webkit-scrollbar { width: 6px; }
+  .clips-wrap::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th {
+    text-align: left; font-weight: 500; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+    padding: 7px 8px; background: #161616; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+  }
+  td { padding: 6px 8px; border-bottom: 1px solid #1e1e1e; white-space: nowrap; }
+  th + th, td + td { border-left: 1px solid #1e1e1e; }
+  td:first-child, th:first-child { width: 36px; text-align: right; }
+  .r { text-align: right; }
+  tbody tr { cursor: pointer; }
+tbody tr:hover td, tbody tr.hover td { background: #2e2e2e; }
+  tbody tr.sel td { background: var(--fg); color: var(--bg); }
+  .empty { padding: 10px 0; color: var(--dim); }
+
+  .toast {
+    position: absolute; left: 1160px; bottom: 6px; width: 424px;
+    color: var(--rec); font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header class="abs">
+    <div class="title">Mercury Live Feed</div>
+    <div class="conn label" id="conn"><span class="dot"></span><span id="connText">connecting</span></div>
+    <div class="spacer"></div>
+    <div class="rec-pill">&#9679; REC</div>
+  </header>
+
+  <div class="abs row-head label" id="cueHead"><span>Cues</span><span id="cueCount"></span></div>
+  <nav class="abs" id="scenes"></nav>
+  <button class="abs" id="go"><span class="go">GO</span><span class="to" id="goTo"></span></button>
+
+  <div class="abs row-head label" id="outHead"><span>Output</span><span class="info" id="outInfo"></span></div>
+  <div class="abs" id="programFrame"></div>
+  <div class="abs" id="program"></div>
+  <div class="abs row-head label" id="camHead"><span>Cameras</span><span id="camCount"></span></div>
+  <div class="abs" id="cams"></div>
+
+  <aside class="abs" id="right">
+    <!-- RECORDER scene -->
+    <div class="section" id="recSection" hidden>
+      <div class="section-head"><span class="big" id="recName">Recorder</span></div>
+      <div class="transport">
+        <button class="btn rec" data-act="record" title="press again to stop recording"><span class="icon">&#9679;</span><span id="recLabel">REC</span></button>
+        <button class="btn play" id="playBtn" data-act="play"><span class="icon">&#9654;</span>PLAY</button>
+        <button class="btn stop" data-act="stop"><span class="icon">&#9632;</span>STOP</button>
+      </div>
+      <div class="status-line"><span class="label">Status</span><span id="recStatus">&ndash;</span></div>
+      <div class="pars" id="recPars" style="margin-top:14px"></div>
+    </div>
+    <div class="section grow" id="clipsSection" hidden>
+      <div class="section-head">
+        <span class="label" id="clipCount">Clips</span>
+        <span class="clips-tools">
+          <span class="label">newest first</span>
+          <button class="btn" id="clipsUp" title="scroll up">&#9650;</button>
+          <button class="btn" id="clipsDown" title="scroll down">&#9660;</button>
+        </span>
+      </div>
+      <div class="clips-wrap" id="clipsWrap">
+        <table>
+          <thead><tr><th>#</th><th>Name</th><th>Modified</th><th class="r">MB</th></tr></thead>
+          <tbody id="clipRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- every other scene -->
+    <div class="section grow" id="sceneSection">
+      <div class="section-head"><span class="big" id="sceneTitle">&mdash;</span><span class="label">Parameters</span></div>
+      <div class="scroll pars" id="scenePars"><div class="empty">No scene selected</div></div>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+// Recorder pars shown as rows (Record/Play/Stop are the transport, Status has its own line)
+const HIDDEN_PARS = ["Record", "Play", "Stop", "Status", "Listclips"];
+const PLAYING = ["opening", "fadein", "playing", "fadeout"];
+// Same as CAMS in build_ui.py
+const CAM_H = 144, CAM_GAP = 16;
+
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+
+let state = null;
+const sigs = {};
+const controls = new Map();
+
+// ------------------------------------------------------------ server
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    state = await r.json();
+    setOnline(true);
+    render(state);
+  } catch (e) {
+    setOnline(false);
+  }
+  setTimeout(poll, 200);
+}
+
+function cmd(params) {
+  return fetch("/api/cmd?" + new URLSearchParams(params), { cache: "no-store" })
+    .then((r) => r.json())
+    .then((j) => { if (!j.ok) toast(j.error); })
+    .catch(() => setOnline(false));
+}
+
+function setOnline(on) {
+  $("#conn").classList.toggle("on", on);
+  $("#connText").textContent = on ? "connected" : "offline";
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+function changed(key, value) {
+  const s = JSON.stringify(value);
+  if (sigs[key] === s) return false;
+  sigs[key] = s;
+  return true;
+}
+
+// ------------------------------------------------------------ render
+
+function render(s) {
+  // Cue list: names exactly as in scene_table, top to bottom
+  if (changed("scenes", s.scenes)) {
+    const nav = $("#scenes");
+    nav.innerHTML = "";
+    s.scenes.forEach((sc, i) => {
+      const b = el("button", "scene");
+      b.dataset.path = sc.path;
+      // Cue number = position in scene_table (1, 2, 3 ...)
+      const left = el("span", "left");
+      left.append(el("span", "num", String(i + 1)), el("span", "name", sc.name));
+      b.append(left, el("span", "tag"));
+      b.onclick = () => selectScene(sc.path);
+      nav.append(b);
+    });
+    $("#cueCount").textContent = s.scenes.length;
+  }
+  markCues(s.current);
+
+  const rec = s.recorder;
+  const onRecorder = !!(rec && s.current === rec.path);
+  const cur = s.scenes.find((x) => x.path === s.current);
+  document.body.classList.toggle("is-rec", !!(rec && rec.recording));
+  $("#recSection").hidden = !onRecorder;
+  $("#clipsSection").hidden = !onRecorder;
+  $("#sceneSection").hidden = onRecorder;
+
+  if (onRecorder) {
+    $("#recName").textContent = cur ? cur.name : "Recorder";
+    const status = (rec.status || "").replace(/^REC \| /, "");
+    $("#recStatus").textContent = (rec.recording ? "recording · " : "") + status;
+    $("#recLabel").textContent = rec.recording ? "RECORDING" : "REC";
+    $("#playBtn").classList.toggle("on", PLAYING.includes(status));
+    const recPars = rec.pars.filter((p) => !HIDDEN_PARS.includes(p.name));  // same order as in TD
+    buildPars("rec", $("#recPars"), rec.path, recPars, false);
+    renderClips(rec);
+  } else {
+    $("#sceneTitle").textContent = cur ? cur.name : "—";
+    const box = $("#scenePars");
+    const pars = s.pars.filter((p) => !HIDDEN_PARS.includes(p.name));
+    if (!s.current) {
+      if (changed("scenePars", "none")) box.innerHTML = '<div class="empty">No scene selected</div>';
+    } else if (!pars.length) {
+      if (changed("scenePars", "empty:" + s.current)) box.innerHTML = '<div class="empty">No parameters</div>';
+    } else {
+      buildPars("scene", box, s.current, pars, true);
+    }
+  }
+
+  renderOutput(s.output || {});
+  renderCams(s.cameras || []);
+}
+
+const dims = (w, h) => (w && h ? `${w} × ${h}` : "");
+
+function renderOutput(o) {
+  const parts = [];
+  if (o.resX) parts.push(dims(o.resX, o.resY));
+  if (o.fps) parts.push(o.fps + " fps");
+  if (o.display != null) parts.push("display " + o.display);
+  const box = $("#outInfo");
+  box.textContent = parts.join("   ·   ") || "no SETTINGS";
+  if (o.resX && o.actualW && (o.actualW != o.resX || o.actualH != o.resY)) {
+    box.append(el("span", "warn", `   (out is ${dims(o.actualW, o.actualH)})`));
+  }
+}
+
+function renderCams(cams) {
+  $("#camCount").textContent = cams.length + (cams.length === 1 ? " camera" : " cameras");
+  const w = Math.round(CAM_H * 16 / 9);
+  if (changed("camsLayout", cams.map((c) => c.path))) {
+    const wrap = $("#cams");
+    wrap.innerHTML = "";
+    cams.forEach((c, i) => {
+      const x = i * (w + CAM_GAP) + "px";
+      const hole = el("div", "cam-hole");
+      hole.style.left = x;
+      hole.style.width = w + "px";
+      const cap = el("div", "cam-cap");
+      cap.style.left = x;
+      cap.style.width = w + "px";
+      cap.dataset.i = i;
+      wrap.append(hole, cap);
+    });
+    delete sigs.camsInfo;
+  }
+  if (!changed("camsInfo", cams)) return;
+  document.querySelectorAll(".cam-cap").forEach((cap) => {
+    const c = cams[Number(cap.dataset.i)];
+    if (!c) return;
+    cap.innerHTML = "";
+    const dev = el("div", "dev", `${c.name}  ·  ${c.device || "(auto)"}`);
+    const spec = el("div", "spec");
+    const bits = [];
+    if (c.resX) bits.push(dims(c.resX, c.resY));
+    if (c.fps) bits.push(c.fps + " fps");
+    if (c.active === 0) bits.push("inactive");
+    spec.textContent = bits.join(" · ");
+    if (c.resX && c.actualW && (c.actualW != c.resX || c.actualH != c.resY)) {
+      spec.append(el("span", "warn", ` (${dims(c.actualW, c.actualH)})`));
+    }
+    cap.append(dev, spec);
+  });
+}
+
+function renderClips(rec) {
+  const modePar = rec.pars.find((p) => p.name === "Mode");
+  const idxPar = rec.pars.find((p) => p.name === "Clipindex");
+  const mode = modePar ? modePar.val : "";
+  const idx = idxPar ? Math.round(idxPar.val) : -1;
+  const n = rec.clips.length;
+  $("#clipCount").textContent = `Clips  ${n}`;
+
+  if (changed("clips", rec.clips)) {
+    const body = $("#clipRows");
+    body.innerHTML = "";
+    if (!n) {
+      const tr = el("tr");
+      const td = el("td", null, "No clips yet");
+      td.colSpan = 4;
+      tr.append(td);
+      body.append(tr);
+    }
+    // Newest first, so the clip you just recorded is always at the top
+    [...rec.clips].reverse().forEach((c) => {
+      const tr = el("tr");
+      tr.dataset.index = c.index;
+      tr.append(el("td", null, c.index), el("td", null, c.name), el("td", null, c.modified), el("td", "r", c.size_MB));
+      // Click a row: play that clip next (Mode = index, Clip Index = row)
+      tr.onclick = () => {
+        setPar(rec.path, "Mode", "index");
+        setPar(rec.path, "Clipindex", c.index);
+      };
+      body.append(tr);
+    });
+  }
+  const next = mode === "index" ? idx : mode === "latest" ? n : -1;
+  document.querySelectorAll("#clipRows tr").forEach((tr) => tr.classList.toggle("sel", Number(tr.dataset.index) === next));
+}
+
+// Hover from TouchDesigner (UIExt.ForwardMouse): the page doesn't get mouse-move
+// events reliably inside a Web Render TOP, so TD sends the position each move.
+let hoverEl = null;
+window.tdHover = (x, y, inside) => {
+  const target = inside ? document.elementFromPoint(x, y) : null;
+  const hit = target && target.closest(".btn, .scene, #go, tbody tr, .tds, .nf, .tdpulse, .tdtog, .tdmenu, .tdopt");
+  if (hit === hoverEl) return;
+  if (hoverEl) hoverEl.classList.remove("hover");
+  hoverEl = hit;
+  if (hit) hit.classList.add("hover");
+};
+
+// Scroll buttons, in case the mouse wheel doesn't reach the page
+$("#clipsUp").onclick = () => $("#clipsWrap").scrollBy({ top: -150 });
+$("#clipsDown").onclick = () => $("#clipsWrap").scrollBy({ top: 150 });
+
+function buildPars(key, box, opPath, pars, showPages) {
+  const shape = pars.map((p) => [p.name, p.kind, p.label, p.page, p.readOnly, p.min, p.max, p.names]);
+  if (changed("shape:" + key, [opPath, shape])) {
+    box.innerHTML = "";
+    const pages = new Set(pars.map((p) => p.page));
+    let page = null;
+    pars.forEach((p) => {
+      if (showPages && pages.size > 1 && p.page !== page) {
+        page = p.page;
+        box.append(el("div", "page-name label", page));
+      }
+      box.append(makeControl(opPath, p));
+    });
+  }
+  pars.forEach((p) => {
+    const update = controls.get(opPath + "|" + p.name);
+    if (update) update(p);
+  });
+}
+
+// ------------------------------------------------------------ controls
+
+function setPar(opPath, name, value) {
+  return cmd({ action: "par", op: opPath, name, value });
+}
+
+function throttle(fn, ms) {
+  let last = 0, timer = null;
+  return (...a) => {
+    const now = performance.now();
+    clearTimeout(timer);
+    if (now - last >= ms) { last = now; fn(...a); }
+    else timer = setTimeout(() => { last = performance.now(); fn(...a); }, ms - (now - last));
+  };
+}
+
+const fmt = (v, isInt) => (isInt ? String(Math.round(v)) : Number(v).toFixed(3).replace(/\.?0+$/, "") || "0");
+
+// TouchDesigner-style slider: thin track with a handle; click or drag anywhere on it
+function tdSlider(p, onChange) {
+  const box = el("div", "tds");
+  const fill = el("div", "fill");
+  const handle = el("div", "handle");
+  box.append(fill, handle);
+  const lo = Math.min(p.min, p.max), hi = Math.max(p.min, p.max);
+  let value = p.val, dragging = false;
+  const show = (v) => {
+    const t = hi > lo ? Math.min(Math.max((v - lo) / (hi - lo), 0), 1) : 0;
+    fill.style.width = t * 100 + "%";
+    handle.style.left = t * 100 + "%";
+  };
+  const fromX = (x) => {
+    const r = box.getBoundingClientRect();
+    let v = lo + Math.min(Math.max((x - r.left) / r.width, 0), 1) * (hi - lo);
+    if (p.isInt) v = Math.round(v);
+    return v;
+  };
+  const send = throttle(onChange, 40);
+  box.onmousedown = (e) => {
+    dragging = true;
+    box.classList.add("drag");
+    value = fromX(e.clientX);
+    show(value);
+    send(value);
+  };
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    value = fromX(e.clientX);
+    show(value);
+    send(value);
+  });
+  window.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    box.classList.remove("drag");
+    onChange(value);
+  });
+  show(value);
+  return {
+    el: box,
+    value: () => value,
+    update: (v, force) => { if (force || !dragging) { value = v; show(v); } },
+  };
+}
+
+// TouchDesigner-style menu: value box with an arrow; the list is drawn in the page
+// (native <select> popups don't show inside a Web Render TOP)
+let openList = null;
+function closeList() { if (openList) { openList.remove(); openList = null; } }
+document.addEventListener("mousedown", (e) => {
+  if (openList && !openList.contains(e.target) && !e.target.closest(".tdmenu")) closeList();
+}, true);
+
+function tdMenu(p, onChange) {
+  const box = el("div", "tdf tdmenu");
+  const label = el("span");
+  box.append(label);
+  let value = p.val;
+  const show = () => {
+    const i = p.names.indexOf(value);
+    label.textContent = i >= 0 ? p.labels[i] || p.names[i] : value;
+  };
+  box.onmousedown = (e) => {
+    e.stopPropagation();
+    if (openList && openList.owner === box) { closeList(); return; }
+    closeList();
+    const r = box.getBoundingClientRect();
+    const list = el("div", "tdlist");
+    list.owner = box;
+    list.style.left = r.left + "px";
+    list.style.top = r.bottom + 1 + "px";
+    list.style.minWidth = r.width + "px";
+    p.names.forEach((n, i) => {
+      const o = el("div", "tdopt" + (n === value ? " sel" : ""), p.labels[i] || n);
+      o.onmousedown = (ev) => { ev.stopPropagation(); value = n; show(); closeList(); onChange(n); };
+      list.append(o);
+    });
+    document.body.append(list);
+    openList = list;
+  };
+  show();
+  return { el: box, update: (v) => { if (!openList || openList.owner !== box) { value = v; show(); } } };
+}
+
+// ------------------------------------------------------------ typing numbers
+// Keys come from TouchDesigner (Keyboard In DAT -> UIExt.OnKey -> window.tdKey),
+// because a Web Render TOP doesn't get the keyboard itself.
+
+let editing = null;
+let nativeKeys = false;
+
+const isEditing = (field) => !!editing && editing.field === field;
+
+function startEdit(field, value, isInt, commit) {
+  if (editing) endEdit(true);
+  editing = { field, isInt, commit, buf: fmt(value, isInt), fresh: true };
+  field.classList.add("editing", "fresh");
+  field.innerHTML = "";
+  field.append(el("span", null, editing.buf));
+}
+
+function endEdit(apply) {
+  const e = editing;
+  if (!e) return;
+  editing = null;
+  e.field.classList.remove("editing", "fresh");
+  const v = parseFloat(e.buf);
+  if (apply && !isNaN(v)) e.commit(e.isInt ? Math.round(v) : v);
+  else e.field.textContent = e.buf;
+}
+
+function handleKey(key, ch) {
+  if (!editing) return false;
+  const k = String(key).toLowerCase();
+  if (["enter", "return", "kpenter", "numpadenter"].includes(k) || ch === "\r" || ch === "\n") { endEdit(true); return true; }
+  if (["esc", "escape"].includes(k)) { endEdit(false); return true; }
+  if (["backspace", "delete"].includes(k) || ch === "\b") {
+    editing.buf = editing.fresh ? "" : editing.buf.slice(0, -1);
+  } else if (ch && /^[0-9.\-]$/.test(ch)) {
+    editing.buf = (editing.fresh ? "" : editing.buf) + ch;
+  } else {
+    return false;
+  }
+  editing.fresh = false;
+  editing.field.classList.remove("fresh");
+  editing.field.textContent = editing.buf;
+  return true;
+}
+
+window.tdKey = (key, ch) => { if (!nativeKeys) handleKey(key, ch); };
+// If the page ever gets real key events, use those and ignore TD's copies
+document.addEventListener("keydown", (e) => {
+  nativeKeys = true;
+  if (handleKey(e.key, e.key.length === 1 ? e.key : "")) e.preventDefault();
+});
+// Clicking anywhere else confirms the number
+document.addEventListener("mousedown", (e) => {
+  if (editing && !editing.field.contains(e.target)) endEdit(true);
+}, true);
+
+function makeControl(opPath, p) {
+  const row = el("div", "ctl");
+  const key = opPath + "|" + p.name;
+  if (p.readOnly && p.kind !== "string") row.classList.add("disabled");
+  row.append(el("span", "plabel", p.label));
+
+  if (p.kind === "pulse") {
+    const b = el("button", "tdpulse", "Pulse");
+    b.onclick = () => setPar(opPath, p.name, 1);
+    row.append(b);
+    controls.set(key, () => {});
+  } else if (p.kind === "momentary") {
+    const b = el("button", "tdpulse", "Hold");
+    b.onmousedown = () => setPar(opPath, p.name, 1);
+    b.onmouseup = b.onmouseleave = () => setPar(opPath, p.name, 0);
+    row.append(b);
+    controls.set(key, () => {});
+  } else if (p.kind === "toggle") {
+    const b = el("button", "tdtog");
+    let val = p.val;
+    const show = () => { b.textContent = val ? "On" : "Off"; b.classList.toggle("on", val); };
+    b.onclick = () => { val = !val; show(); setPar(opPath, p.name, val ? 1 : 0); };
+    row.append(b);
+    controls.set(key, (q) => { val = q.val; show(); });
+  } else if (p.kind === "menu") {
+    const m = tdMenu(p, (v) => setPar(opPath, p.name, v));
+    row.append(m.el);
+    controls.set(key, (q) => m.update(q.val));
+  } else if (p.kind === "number") {
+    const wrap = el("div", "numrow");
+    const field = el("div", "tdf nf");
+    const s = tdSlider(p, (v) => { if (!isEditing(field)) field.textContent = fmt(v, p.isInt); setPar(opPath, p.name, v); });
+    const commit = (v) => { s.update(v, true); field.textContent = fmt(v, p.isInt); setPar(opPath, p.name, v); };
+    field.textContent = fmt(p.val, p.isInt);
+    field.onmousedown = (e) => { e.stopPropagation(); startEdit(field, s.value(), p.isInt, commit); };
+    wrap.append(field, s.el);
+    row.append(wrap);
+    controls.set(key, (q) => { s.update(q.val); if (!isEditing(field)) field.textContent = fmt(q.val, p.isInt); });
+  } else {
+    const span = el("div", "tdf tdstr");
+    row.append(span);
+    controls.set(key, (q) => (span.textContent = q.val));
+  }
+  return row;
+}
+
+// ------------------------------------------------------------ cues
+
+function nextCue(current) {
+  if (!state) return null;
+  const i = state.scenes.findIndex((x) => x.path === current);
+  return state.scenes[i + 1] || null;
+}
+
+function markCues(current) {
+  const next = nextCue(current);
+  document.querySelectorAll(".scene").forEach((b) => {
+    b.classList.toggle("active", b.dataset.path === current);
+    b.classList.toggle("next", !!next && b.dataset.path === next.path);
+  });
+  $("#go").disabled = !next;
+  const n = next ? state.scenes.indexOf(next) + 1 : 0;
+  $("#goTo").textContent = next ? `→  ${n}  ${next.name}` : "end of list";
+}
+
+function selectScene(path) {
+  if (state) state.current = path;
+  markCues(path);
+  cmd({ action: "scene", value: path });
+}
+
+$("#go").onclick = () => {
+  const next = nextCue(state && state.current);
+  if (next) selectScene(next.path);
+};
+document.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => cmd({ action: b.dataset.act })));
+
+poll();
+</script>
+</body>
+</html>
