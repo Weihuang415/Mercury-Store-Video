@@ -1,4 +1,4 @@
 node	cam	device	resX	resY	fps	flipX	active
-WF	1	MacBook Pro Camera	1280	720	30	0	1
-WF	2		1280	720	30	0	0
-WF	3		1280	720	30	0	0
+WF	1	MacBook Pro Camera	1920	1080	30	0	1
+WF	2		1920	1080	30	0	0
+WF	3		1920	1080	30	0	0

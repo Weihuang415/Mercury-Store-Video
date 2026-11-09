@@ -6,3 +6,6 @@ Backup/
 CrashAutoSave*
 *.bak
 *.toe.bak
+
+# TouchDesigner numbered saves (Main_Mercury.43.toe etc.)
+*.[0-9]*.toe
